@@ -3,70 +3,40 @@ import PyPDF2
 from lxml import etree
 from flask import Flask, request, redirect, url_for, send_from_directory, render_template, flash
 
+app = Flask(__name__)
+app.secret_key = 'supersecretkey'
+UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'xmls'
+SCHEMA_FILE = 'schema/schema.xsd'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
 def extract_text_from_pdf(pdf_path):
     pdf_reader = PyPDF2.PdfReader(pdf_path)
     num_pages = len(pdf_reader.pages)
     text = ""
-    
     for page_num in range(num_pages):
         page = pdf_reader.pages[page_num]
         text += page.extract_text() + "\n"
-        
     return text
 
 def create_xml(data, output_path):
-    root = etree.Element("Document")
-
-    sections = {
-        "ProfessionalProfile": [],
-        "WorkExperience": [],
-        "Education": [],
-        "Skills": [],
-        "ContactInfo": [],
-        "Other": []
-    }
-
-    current_section = "Other"
-    
-    for paragraph in data.split("\n"):
-        paragraph = paragraph.strip()
-        if not paragraph:
-            continue
-        if any(keyword in paragraph for keyword in ["Professional Profile", "Professional Objective", "Professional experience"]):
-            current_section = "ProfessionalProfile"
-        elif any(keyword in paragraph for keyword in ["Work Experience", "Experience", "Technical assistance", "Exam applicator", "Corrective maintenance", "Technical Support", "Computer assistant", "Exam applicator", "Technical assistance"]):
-            current_section = "WorkExperience"
-        elif any(keyword in paragraph for keyword in ["Education", "University", "School", "Autonomous University", "Digital University", "XXI Century University Center"]):
-            current_section = "Education"
-        elif any(keyword in paragraph for keyword in ["Skills", "Certifications", "Knowledge", "Solid programming knowledge", "Technical skills", "CSS", "PHP", "HTML", "JavaScript", "MySQL", "Database management"]):
-            current_section = "Skills"
-        elif any(keyword in paragraph for keyword in ["Contact Info", "Contact", "Email", "Phone", "Address", "City"]):
-            current_section = "ContactInfo"
-        sections[current_section].append(paragraph)
-    
-    for section, paragraphs in sections.items():
-        section_element = etree.SubElement(root, section)
-        for paragraph in paragraphs:
-            if paragraph:
-                text_element = etree.SubElement(section_element, "Paragraph")
-                text_element.text = paragraph
-    
-    permissions = etree.SubElement(root, "Permissions")
-    permission1 = etree.SubElement(permissions, "Permission")
-    permission1.text = "PermisoEjemplo"
-    
+    root = etree.Element("TituloElectronico", xmlns="https://www.siged.sep.gob.mx/titulos/", version="1.0", folioControl="sampleFolioControl")
+    firma_responsables = etree.SubElement(root, "FirmaResponsables")
+    firma_responsable = etree.SubElement(firma_responsables, "FirmaResponsable", nombre="MIGUEL ANGEL", primerApellido="ALEJO", segundoApellido="MACIAS", curp="AEMM830225HDFLCG04", idCargo="1", cargo="DIRECTOR", abrTitulo="Dr.", sello="sampleSello", certificadoResponsable="sampleCertificado", noCertificadoResponsable="00001000000409837457")
+    institucion = etree.SubElement(root, "Institucion", cveInstitucion="090002", nombreInstitucion="INSTITUTO POLITÉCNICO NACIONAL")
+    carrera = etree.SubElement(root, "Carrera", cveCarrera="515237", nombreCarrera="TÉCNICO EN PLÁSTICOS", fechaInicio="2006-01-01", fechaTerminacion="2009-01-01", idAutorizacionReconocimiento="3", autorizacionReconocimiento="AUTORIZACIÓN FEDERAL")
+    profesionista = etree.SubElement(root, "Profesionista", curp="AOJM910903MMCLMR07", nombre="MARIANA", primerApellido="ALONSO", segundoApellido="JIMENEZ", correoElectronico="a.mar.sanorbac_jimenez@hotmail.com")
+    expedicion = etree.SubElement(root, "Expedicion", fechaExpedicion="2013-12-04", idModalidadTitulacion="1", modalidadTitulacion="POR TESIS", fechaExamenProfesional="2009-08-05", cumplioServicioSocial="1", idFundamentoLegalServicioSocial="1", fundamentoLegalServicioSocial="ART. 52 LRART. 5 CONST", idEntidadFederativa="09", entidadFederativa="CIUDAD DE MÉXICO")
+    antecedente = etree.SubElement(root, "Antecedente", institucionProcedencia="ESCUELA SECUNDARIA TECNICA 47, MÉXICO, D. F.", idTipoEstudioAntecedente="6", tipoEstudioAntecedente="SECUNDARIA", idEntidadFederativa="09", entidadFederativa="CIUDAD DE MÉXICO")
     tree = etree.ElementTree(root)
     tree.write(output_path, pretty_print=True, xml_declaration=True, encoding="UTF-8")
+    validate_xml(output_path, SCHEMA_FILE)
 
-def process_pdf_to_xml(pdf_path, output_xml_path):
-    pdf_text = extract_text_from_pdf(pdf_path)
-    create_xml(pdf_text, output_xml_path)
-
-app = Flask(__name__)
-app.secret_key = 'supersecretkey'  # Necesario para usar flash messages
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'xmls'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+def validate_xml(xml_file, xsd_file):
+    schema = etree.XMLSchema(file=xsd_file)
+    parser = etree.XMLParser(schema=schema)
+    with open(xml_file, 'rb') as f:
+        etree.fromstring(f.read(), parser)
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
@@ -91,6 +61,10 @@ def upload_file():
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(OUTPUT_FOLDER, filename)
+
+def process_pdf_to_xml(pdf_path, output_xml_path):
+    pdf_text = extract_text_from_pdf(pdf_path)
+    create_xml(pdf_text, output_xml_path)
 
 if __name__ == '__main__':
     app.run(debug=True)
